@@ -150,9 +150,18 @@ byte outParam[6][_parameters];
  15: division offset
  */
 
+
+/*
+ * Hardware options
+ */
 #define OUT_PORT PORTB //pins 8-13 as outputs
 #define PORT_DIRECTION DDRB
 
+#define INVERSE_BUTTONS
+
+/* 
+ *  Variables
+ */
 byte paramA = 0; //variable for selecting output to work on
 int clickLength = 16; // was int
 // const int offsetRange = 16; //min and max offset amount
@@ -192,7 +201,6 @@ unsigned long lastButtonTime = 0;
 // const uint8_t debounceTime = 200; // now local
 
 const int saveButtonPin = A5; //enter save/read mode
-// const int buttonThreshold = 400;// now local
 int saveRead = 255;
 boolean saveButton = false;
 
@@ -248,6 +256,7 @@ SoftwareSerial mySerial =  SoftwareSerial(rxPin, txPin);
 void setup() {
   delay(100);
   Serial.begin(9600);
+  Serial.println("Triggerhappy 1.07 starting");
   randomSeed(analogRead(A2));
   setupEncoder();
   setupDisplay();
@@ -255,8 +264,6 @@ void setup() {
   pinMode(buttonPin, INPUT);
   digitalWrite(buttonPin, HIGH);
   initParams();// initializes outParams array
-  //IMPORTANT: comment out the following line first time you run this sketch!
-  //loadSettings(); //loads from save location 0 on startup (will load garbage until you do a save to slot 0!)
   pinMode(clockPin, INPUT);
   pinMode(saveButtonPin, INPUT);
   digitalWrite(saveButtonPin, HIGH);
@@ -268,10 +275,18 @@ void setup() {
   rateMain = 250;
   iBPM = 60;
   BPM = "60";
+
+  
   
   //EM moved here because of overwriting bpm
   //IMPORTANT: comment out the following line first time you run this sketch!
   loadSettings(); //loads from save location 0 on startup (will load garbage until you do a save to slot 0!)
+
+  //new Arduino
+  if (outParam[0][2]==0) {
+    initSettings();
+    saveSettings();
+  }
   
   nowTime = millis();
   readSwitch(); // Read int/ext switch setting at startup
@@ -427,7 +442,13 @@ void loop() {
 void readInputs() {
   const int debounceTime = 50;
   //read encoder button
+
+#ifdef INVERSE_BUTTONS
+  button1 = !digitalRead(buttonPin);
+#else
   button1 = digitalRead(buttonPin);
+#endif
+  
   if (button1) {
     if ((b1Previous == false) && (nowTime - lastButtonTime > debounceTime)) {
       b1Pushed = true;
@@ -443,29 +464,48 @@ void readInputs() {
 
   //read file button
   saveRead = analogRead(saveButtonPin);
+#ifdef INVERSE_BUTTONS
+  if (saveRead > buttonThreshold) saveButton = false;
+  else saveButton = true;
+#else
   if (saveRead < buttonThreshold) saveButton = false;
   else saveButton = true;
+#endif
   if (saveButton && ((nowTime - lastSave) > 500)) saveButton = true;
   else saveButton = false;
 
   //read sync button
   syncRead = analogRead(syncButtonPin);
+#ifdef INVERSE_BUTTONS
+  if (syncRead > buttonThreshold) syncButton = false;
+  else syncButton = true;
+#else
   if (syncRead < buttonThreshold) syncButton = false;
   else syncButton = true;
+#endif
   if (syncButton && ((nowTime - lastSync) > 500)) syncButton = true;
   else syncButton = false;
 
   //read int/ext switch
   if (nowTime - switchPrevious > debounceTime) {
     sourceRead = analogRead(syncIntExtPin);
+#ifdef INVERSE_BUTTONS
+    if (sourceRead < switchThreshold) clockInternal = true;
+    else if (sourceRead >= switchThreshold) clockInternal = false;
+#else
     if (sourceRead > switchThreshold) clockInternal = true;
-    else if (sourceRead <= buttonThreshold) clockInternal = false;
+    else if (sourceRead <= switchThreshold) clockInternal = false;
+#endif
     switchPrevious = nowTime;
   }
   //read clock pin
   if (!clockInternal) {
     clockValue = analogRead(clockPin);
+#ifdef INVERSE_BUTTONS
+    if (clockValue <= clockThreshold) {
+#else
     if (clockValue >= clockThreshold) {
+#endif
       if (!clockPrevious) {
         // makrospex:
         if (!lastClock) {
@@ -496,13 +536,23 @@ void readInputs() {
 
 void readSwitch() {
   sourceRead = analogRead(syncIntExtPin);
+#ifdef INVERSE_BUTTONS
+  if (sourceRead < switchThreshold) {
+    clockInternal = true;
+  }
+  else if (sourceRead >= switchThreshold) {
+    clockInternal = false;
+    seqStop = true;
+  }
+#else
   if (sourceRead > switchThreshold) {
     clockInternal = true;
   }
-  else if (sourceRead <= buttonThreshold) {
+  else if (sourceRead <= switchThreshold) {
     clockInternal = false;
     seqStop = true;
   }  
+#endif
   switchPrevious = millis();
 }
 
@@ -767,6 +817,33 @@ void saveSettings() { //will overwrite settings in EEPROM without warning!
   sei(); // re-enable interrupts
 }
 
+void initSettings(){
+// init with 60 bpm internal clocking:
+  //rateMain = 250;
+  //iBPM = 60;
+  //BPM = "60";
+
+  for (int i = 0; i<6; i++) {
+    outParam[i][0] = 0; // 0: Mode (0 clicktable; 1 logic; 2 Euclidean; 3 LSFR ; 4 Random; 5 Clock division)
+    outParam[i][1] = 128; // 1: Offset (128 = no offset)
+    outParam[i][2] = 10; // 2: Trigger length or Gate > 99
+    outParam[i][3] = 0; // 3: Clicktable number
+    outParam[i][4] = 16; // 4: Length (if clicktable)
+    outParam[i][5] = 0; // 5: Logic mode (1-7) 1= NOT; 2= AND; 3= OR; 4= NAND; 5= NOR; 6= XOR; 7= XNOR
+    outParam[i][6] = 0; // 6: 1st Output to base logic on (Outputs must be lower number than the output doing the logic!)
+    outParam[i][7] = 0; // 7: 2nd Output to base logic on
+    outParam[i][8] = 0; // 8: Euclidean length (beats)
+    outParam[i][9] = 0; //  9: Euclidean pulses (groups)
+    outParam[i][10] = 0; // 10: tap1
+    outParam[i][11] = 0; // 11: tap2
+    outParam[i][12] = 0; // 12: LFSR length
+    outParam[i][13] = 0; // 13: Clock divisor
+    outParam[i][14] = 0; // 14: N / random threshold
+    outParam[i][15] = 0; // 15: division offset
+  }
+}
+
+
 
 void loadSettings() {
   //EM: 98-> slotSize
@@ -794,4 +871,5 @@ void loadSettings() {
     BPM = String(iBPM);
   }
 }
+
 
