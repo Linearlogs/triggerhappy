@@ -863,7 +863,7 @@ void initSettings(){
     patch.channel[selectedChannel].euclidianPulses = 1; //  9: Euclidean pulses (groups)
     patch.channel[selectedChannel].lfsrTap1 = 0; // 10: tap1
     patch.channel[selectedChannel].lfsrTap2 = 0; // 11: tap2
-    patch.channel[selectedChannel].lfsrLength = SR_Length; // 12: LFSR length
+    patch.channel[selectedChannel].lfsrLength = SR_length; // 12: LFSR length
     patch.channel[selectedChannel].clockDivisor = 1; // 13: Clock divisor
     patch.channel[selectedChannel].randomThreshold = 0; // 14: N / random threshold
     patch.channel[selectedChannel].divisionOffset = 0; // 15: division offset
